@@ -1,4 +1,4 @@
-# qra-cloud-marketplace# Overview
+# Overview
 
 The QRA Cloud platform is delivered as a marketplace application that provisions and configures the cloud infrastructure required to host our solution in your environment.
 
