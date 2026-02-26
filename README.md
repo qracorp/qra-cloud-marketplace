@@ -15,8 +15,6 @@ During deployment, customers can choose between:
 
 This document explains both options and their requirements.
 
-------------------------------------------------------------------------
-
 ## Deployment Options (Azure)
 
 This section provides information on various deployment options available for the Azure platform. The QRA Cloud platform is deployed as an Azure Managed application.
@@ -45,9 +43,7 @@ If you do **not** bring your own AKS cluster, the marketplace deployment will:
 - Customers wanting a turnkey deployment
 - Customers prioritizing simplicity and supportability
 
-------------------------------------------------------------------------
-
-## Option 2 -- Bring Your Own AKS (BYO AKS)
+## Option 2 Bring Your Own AKS (BYO AKS)
 
 Customers may choose to use an existing AKS cluster.
 
