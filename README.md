@@ -1,6 +1,6 @@
-# Overview
+# QRA Cloud VNet Azure Marketplace Deployment Guide
 
-The QRA Cloud platform is delivered as a marketplace application that provisions and configures the cloud infrastructure required to host our solution in your environment.
+The QRA Cloud platform is delivered as a marketplace application that provisions and configures the cloud infrastructure required to host the solution in your environment.
 
 The deployment creates and configures all necessary cloud resources, including:
 
@@ -10,18 +10,18 @@ The deployment creates and configures all necessary cloud resources, including:
 
 During deployment, customers can choose between:
 
-1. **Bring Your Own AKS (BYO Kubernetes cluster)**
-2. **Deploy a New AKS Cluster (Recommended)**
+1. **Deploy a New AKS Cluster (Recommended)**
+2. **Bring Your Own AKS Cluster (BYO AKS)**
 
 This document explains both options and their requirements.
 
 ## Deployment Options (Azure)
 
-This section provides information on various deployment options available for the Azure platform. The QRA Cloud platform is deployed as an Azure Managed application.
+The QRA Cloud platform is deployed as an Azure Managed Application. The sections below describe the available deployment options for the Azure platform.
 
-## Option 1 - Deploy a new to a managed AKS Cluster (Recommended)
+## Option 1 - Deploy a New Managed AKS Cluster (Recommended)
 
-If you do **not** bring your own AKS cluster, the marketplace deployment will:
+The marketplace deployment provisions and configures a new AKS cluster, including:
 
 - Provision a new Kubernetes cluster
 - Configure it according to platform requirements
@@ -32,58 +32,59 @@ If you do **not** bring your own AKS cluster, the marketplace deployment will:
 ### Advantages
 
 - Fully automated deployment
-- Pre-configured to meet platform standards
+- Pre-configured to meet QRA recommended platform standards
 - No manual Kubernetes configuration required
 - Simpler support model
 - Reduced risk of misconfiguration
 
 ### Recommended For
 
-- Customers without an existing AKS standard
+- Customers without an existing AKS cluster
 - Customers wanting a turnkey deployment
 - Customers prioritizing simplicity and supportability
 
-## Option 2 Bring Your Own AKS (BYO AKS)
+## Option 2 - Bring Your Own AKS Cluster(BYO AKS)
 
-Customers may choose to use an existing AKS cluster.
 
-⚠️ **Important:**\
-Because Azure Managed Applications deploy resources into a managed resource group, the deployment context don't have enough permissions to write resources outside of the mrg.
-Due to this limitation, additional configuration steps are required.
+> **Important:** Because Azure Managed Applications deploy resources into a managed resource group, the deployment context does not have sufficient permissions to write resources outside of the managed resource group. Due to this limitation, additional configuration steps are required.
 
 ### BYO AKS Requirements
 
-If you choose to bring your own AKS, you must ensure the following prerequisites are met.
+If you choose to bring your own AKS cluster, you must ensure the following prerequisites are met.
 
 #### AKS Cluster Requirements
 
-- Kubernetes version 1.32.9 and up
+- Kubernetes version 1.32.9 or later
 - Node pool
   - Mode: User
   - OS: Linux
-  - Autscaling: enabled
-  - VM size: We recommend `F series v6` such as `Standard_F4als_v6` vm images
+  - Autoscaling: enabled
+  - VM size: We recommend `F series v6` such as `Standard_F4als_v6`
   - Node labels
-    - qracloud.io/workload: 'qra'
-- Keda scaler is enabled
+    - `qracloud.io/workload: qra`
+- KEDA scaler enabled
 
 #### Networking Requirements
 
 - Virtual network
-  - Address space of at least /16
-  - Subnets must be configured
-    - qraSystem - x.x.1.0/24
-    - qraApp - x.x.2.0/24
-    - qraDb - x.x.3.0/26
-    - qraSql - x.x.4.0/26
-    - qraRedis - x.x.5.0/27
-- Load balacned ingress is enabled. See [required kubernetes components](#required-kubernetes-components). Take note of the ingress IP.
+  - Address space of at least `/16`
+  - The following subnets must be configured:
+
+    | Subnet    | CIDR        |
+    |-----------|-------------|
+    | qraSystem | x.x.1.0/24 |
+    | qraApp    | x.x.2.0/24 |
+    | qraDb     | x.x.3.0/26 |
+    | qraSql    | x.x.4.0/26 |
+    | qraRedis  | x.x.5.0/27 |
+
+- Load-balanced ingress is enabled. See [Required Kubernetes Components](#required-kubernetes-components) and take note of the ingress IP.
 
 #### Required Kubernetes Components
 
-You must pre-install the following components:
+You must pre-install the following components on your cluster before initiating the marketplace deployment.
 
-- Ingress controller - used for ingress
+**Ingress Controller** — used for ingress routing:
 
 ```bash
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
@@ -97,7 +98,7 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --timeout 300s
 ```
 
-- cert-manager - used for tls cert
+**cert-manager** — used for TLS certificate management:
 
 ```bash
 helm upgrade cert-manager oci://quay.io/jetstack/charts/cert-manager \
@@ -108,20 +109,20 @@ helm upgrade cert-manager oci://quay.io/jetstack/charts/cert-manager \
     --set crds.enabled=true \
     --set "extraArgs={--dns01-recursive-nameservers=ns1-06.azure-dns.com:53\,ns2-06.azure-dns.net:53\,ns3-35.azure-dns.org:53\,ns4-35.azure-dns.info:53\,8.8.8.8:53}" \
     --server-side --force-conflicts
-  ```
+```
 
-- Keda scaler - used for scaling pods
-  
- ```bash
+**KEDA Scaler** — used for pod autoscaling:
+
+```bash
 helm upgrade --install keda kedacore/keda \
     --namespace keda \
     --create-namespace \
     --wait \
     --timeout 5m
- ```
+```
 
-- QRA Cloud chart files
-  
+**QRA Cloud Helm Chart** — installs the QRA Cloud platform:
+
 ```bash
 helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
     --install \
@@ -145,7 +146,7 @@ helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
     --wait
 ```
 
-> A list of credentials and values will be provided separately in order to configure your deployment during marketplace installation.
+> A list of credentials and values will be provided separately to configure your deployment during marketplace installation.
 
 ## Identity & Permissions
 
@@ -160,42 +161,42 @@ The following permissions must be configured:
 
 ## Namespace & Isolation
 
-The platform will be deployed into the `qra` namespace. You must ensure that the said namespace is not yet taken or have any conflicts with your policies.
+The platform is deployed into the `qra` namespace. Ensure this namespace does not already exist or conflict with your cluster policies prior to deployment.
 
-## Post installation steps
+## Post-Installation Steps
 
-After marketplace deployment, there are steps that needs to be done to fully setup the deployment.
+After the marketplace deployment completes, the following steps are required to fully configure the deployment.
 
-### Vnet connection
+### VNet Connection
 
-Our solution uses its own vnet to configure its infrastructure, and in order for your organization to access it, you are required to do some form of connection to the provided vnet via vnet peering, vpn gateway, etc. We recommend `vnet peering` for its simplicity.
+The solution uses its own VNet to configure its infrastructure. To allow your organization to access it, you must establish a connection to the provided VNet via VNet peering, VPN gateway, or a similar mechanism. **VNet peering** is recommended for its simplicity and low latency.
 
-### DNS zone virtual network link
+### DNS Zone Virtual Network Link
 
-Our solution provides a DNS zone which makes the domains such as `qracloud.io` and other PaaS services domain available. Vnets can resolve the domain until it is linked to the DNS zone.
+The solution provides a private DNS zone that makes domains such as `qracloud.io` and other PaaS service domains resolvable. A VNet must be linked to the DNS zone before it can resolve these domains.
 
-#### Managed Kubernetes
+#### Managed AKS
 
-For managed kubernetes, you must link your vnet to the `qracloud.io` DNS zone.
+For managed AKS deployments, link your VNet to the `qracloud.io` private DNS zone.
 
 #### BYO AKS
 
-For BYO AKS, the following needs to be linked to all private DNS zones created by the deployment.
+For BYO AKS deployments, link the following to all private DNS zones created by the deployment:
 
-![private dns zones](./assets//private-dns-zones.png)
+![Private DNS zones](./assets/private-dns-zones.png)
 
 ## Recommendation
 
-We strongly recommend deploying a **new AKS cluster through the Managed
-Application** unless:
+We strongly recommend deploying a **new AKS cluster through the Managed Application** unless:
 
-- You have strict infrastructure standards
+- You accept the increased operational ownership that comes with a custom AKS configuration outside QRA's standard support model — overall operational overhead is higher due to the additional maintenance and complexity on your end
 - You require consolidation into an existing AKS cluster
-- You have Kubernetes operational expertise
+- You have existing Kubernetes operational expertise
 
 Using a managed AKS deployment ensures:
 
 - Faster onboarding
 - Reduced configuration risk
+- A fully supported deployment posture
 
-> If you need assistance evaluating which option is best for your environment, please contact our [technical team](mailto:support@qracorp.com) before initiating deployment.
+> If you need assistance evaluating which option is best for your environment, please contact our [technical support team](mailto:support@qracorp.com) before initiating deployment.
