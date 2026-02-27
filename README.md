@@ -56,6 +56,7 @@ If you choose to bring your own AKS cluster, you must ensure the following prere
 
 - Kubernetes version 1.32.9 or later
 - Node pool
+  - name: qrapool
   - Mode: User
   - OS: Linux
   - Autoscaling: enabled
@@ -130,8 +131,6 @@ helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
     --set global.registry.name=$REGISTRY_NAME \
     --set global.registry.username=$REGISTRY_USERNAME \
     --set global.registry.password=$REGISTRY_PASSWORD \
-    --set global.database.username=$DB_USERNAME \
-    --set global.database.password=$DB_PASSWORD \
     --set keycloak.adminUser=$KC_ADMIN_USERNAME \
     --set keycloak.adminPassword=$KC_ADMIN_PASSWORD \
     --set global.tenantName="${TENANT_NAME}" \
