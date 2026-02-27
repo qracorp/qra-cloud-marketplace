@@ -181,7 +181,7 @@ For managed AKS deployments, link your VNet to the `qracloud.io` private DNS zon
 
 #### BYO AKS
 
-For BYO AKS deployments, link the following to all private DNS zones created by the deployment:
+For BYO AKS deployments, link your VNet to the following private DNS zones created by the deployment:
 
 ![Private DNS zones](./assets/private-dns-zones.png)
 
