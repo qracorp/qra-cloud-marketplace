@@ -52,19 +52,6 @@ The marketplace deployment provisions and configures a new AKS cluster, includin
 
 If you choose to bring your own AKS cluster, you must ensure the following prerequisites are met.
 
-#### AKS Cluster Requirements
-
-- Kubernetes version 1.32.9 or later
-- Node pool
-  - name: qrapool
-  - Mode: User
-  - OS: Linux
-  - Autoscaling: enabled
-  - VM size: We recommend `F series v6` such as `Standard_F4als_v6`
-  - Node labels
-    - `qracloud.io/workload: qra`
-- KEDA scaler enabled
-
 #### Networking Requirements
 
 - Virtual network
@@ -73,12 +60,21 @@ If you choose to bring your own AKS cluster, you must ensure the following prere
 
     | Subnet    | CIDR        |
     |-----------|-------------|
-    | qraSystem | x.x.1.0/24 |
-    | qraApp    | x.x.2.0/24 |
-    | qraDb     | x.x.3.0/26 |
-    | qraSql    | x.x.4.0/26 |
-    | qraRedis  | x.x.5.0/27 |
+    | qraApp    | x.x.2.0/24  |
 
+#### AKS Cluster Requirements
+
+- Kubernetes version 1.32.9 or later
+- Node pools
+  - qrapool - node pool to handle all qra workloads
+    - Name: qrapool
+    - Mode: User
+    - OS: Linux
+    - Autoscaling: enabled
+    - VM size: We recommend `F series v6` such as `Standard_F4als_v6`
+    - Node labels
+      - `qracloud.io/workload: qra` - Label selector used by all qra workloads
+- KEDA scaler enabled. See [Required Kubernetes Components](#required-kubernetes-components) for more info.
 - Load-balanced ingress is enabled. See [Required Kubernetes Components](#required-kubernetes-components) and take note of the ingress IP.
 
 #### Required Kubernetes Components
@@ -108,8 +104,7 @@ helm upgrade cert-manager oci://quay.io/jetstack/charts/cert-manager \
     --namespace cert-manager \
     --create-namespace \
     --set crds.enabled=true \
-    --set "extraArgs={--dns01-recursive-nameservers=ns1-06.azure-dns.com:53\,ns2-06.azure-dns.net:53\,ns3-35.azure-dns.org:53\,ns4-35.azure-dns.info:53\,8.8.8.8:53}" \
-    --server-side --force-conflicts
+    --set "extraArgs={--dns01-recursive-nameservers=ns1-06.azure-dns.com:53\,ns2-06.azure-dns.net:53\,ns3-35.azure-dns.org:53\,ns4-35.azure-dns.info:53\,8.8.8.8:53}"
 ```
 
 **KEDA Scaler** — used for pod autoscaling:
@@ -128,19 +123,21 @@ helm upgrade --install keda kedacore/keda \
 helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
     --install \
     --namespace qra --create-namespace \
-    --set global.registry.name=$REGISTRY_NAME \
-    --set global.registry.username=$REGISTRY_USERNAME \
-    --set global.registry.password=$REGISTRY_PASSWORD \
-    --set keycloak.adminUser=$KC_ADMIN_USERNAME \
-    --set keycloak.adminPassword=$KC_ADMIN_PASSWORD \
-    --set global.tenantName="${TENANT_NAME}" \
-    --set global.tenantAdmin=$TENANT_ADMINISTRATORS \
-    --set infrastructure.telemetry.appInsights.connectionString="${APPINSIGHTS_CONNECTION_STRING}" \
-    --set global.azureDNS.clientSecret=$TLS_SECRET \
-    --set global.database.connectionString="${QRA_DB_CONNECTIONSTRING}" \
-    --set global.keycloak.connectionString="${QRA_KC_DB_CONNECTIONSTRING}" \
-    --set global.redis.connectionString="${QRA_REDIS_CONNECTIONSTRING}" \
-    --set global.nodePool=$QRA_NODE_POOL \
+    --set global.registry.name='${REGISTRY_NAME}' \
+    --set global.registry.username='${$REGISTRY_USERNAME}' \
+    --set global.registry.password='${REGISTRY_PASSWORD}' \
+    --set global.database.username='${QRA_DB_USERNAME}' \
+    --set global.database.password='${QRA_DB_PASSWORD}' \
+    --set keycloak.adminUser='${KC_ADMIN_USERNAME}' \
+    --set keycloak.adminPassword='${KC_ADMIN_PASSWORD}' \
+    --set global.tenantName='${TENANT_NAME}' \
+    --set global.tenantAdmin='${TENANT_ADMINISTRATORS}' \
+    --set infrastructure.telemetry.appInsights.connectionString='${APPINSIGHTS_CONNECTION_STRING}' \
+    --set global.azureDNS.clientSecret='${TLS_SECRET}' \
+    --set global.database.connectionString='${QRA_DB_CONNECTIONSTRING}' \
+    --set global.keycloak.connectionString='${QRA_KC_DB_CONNECTIONSTRING}' \
+    --set global.redis.connectionString='${QRA_REDIS_CONNECTIONSTRING}' \
+    --set global.nodePool='qra' \
     --set global.qwl.replicas=$QWL_REPLICAS \
     --wait
 ```
