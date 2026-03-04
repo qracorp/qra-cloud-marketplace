@@ -117,7 +117,46 @@ helm upgrade --install keda kedacore/keda \
     --timeout 5m
 ```
 
-**QRA Cloud Helm Chart** — installs the QRA Cloud platform:
+## Identity & Permissions
+
+The following permissions must be configured:
+
+- AKS must allow workload identity or managed identity (if required)
+- The platform must have sufficient RBAC permissions to:
+  - Create namespaces
+  - Deploy workloads
+  - Create services and ingress resources
+  - Create secrets and config maps
+
+## Namespace & Isolation
+
+The platform is deployed into the `qra` namespace. Ensure this namespace does not already exist or conflict with your cluster policies prior to deployment.
+
+## Post-Installation Steps
+
+After the marketplace deployment completes, the following steps are required to fully configure the platform.
+
+### VNet Connection
+
+The solution uses its own VNet to configure its infrastructure. To allow your organization to access it, you must establish a connection to the provided VNet via VNet peering, VPN gateway, or a similar mechanism. **VNet peering** is recommended for its simplicity and low latency.
+
+### DNS Zone Virtual Network Link
+
+The solution provides a private DNS zone that makes domains such as `qracloud.io` and other PaaS service domains resolvable. A VNet must be linked to the DNS zone before it can resolve these domains.
+
+#### Managed AKS
+
+For managed AKS deployments, link your VNet to the `qracloud.io` private DNS zone.
+
+#### BYO AKS
+
+For BYO AKS deployments, link your VNet to the following private DNS zones created by the deployment:
+
+![Private DNS zones](./assets/private-dns-zones.png)
+
+### Install the QRA Cloud helm chart
+
+The command below installs the QRA Cloud platform into your cluster. Ensure that all required infrastructure components are fully provisioned before deploying the chart.
 
 ```bash
 helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
@@ -142,44 +181,7 @@ helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
     --wait
 ```
 
-> A list of credentials and values will be provided separately to configure your deployment during marketplace installation.
-
-## Identity & Permissions
-
-The following permissions must be configured:
-
-- AKS must allow workload identity or managed identity (if required)
-- The platform must have sufficient RBAC permissions to:
-  - Create namespaces
-  - Deploy workloads
-  - Create services and ingress resources
-  - Create secrets and config maps
-
-## Namespace & Isolation
-
-The platform is deployed into the `qra` namespace. Ensure this namespace does not already exist or conflict with your cluster policies prior to deployment.
-
-## Post-Installation Steps
-
-After the marketplace deployment completes, the following steps are required to fully configure the deployment.
-
-### VNet Connection
-
-The solution uses its own VNet to configure its infrastructure. To allow your organization to access it, you must establish a connection to the provided VNet via VNet peering, VPN gateway, or a similar mechanism. **VNet peering** is recommended for its simplicity and low latency.
-
-### DNS Zone Virtual Network Link
-
-The solution provides a private DNS zone that makes domains such as `qracloud.io` and other PaaS service domains resolvable. A VNet must be linked to the DNS zone before it can resolve these domains.
-
-#### Managed AKS
-
-For managed AKS deployments, link your VNet to the `qracloud.io` private DNS zone.
-
-#### BYO AKS
-
-For BYO AKS deployments, link your VNet to the following private DNS zones created by the deployment:
-
-![Private DNS zones](./assets/private-dns-zones.png)
+> A list of credentials and values will be provided by separately to configure your deployment.
 
 ## Recommendation
 
