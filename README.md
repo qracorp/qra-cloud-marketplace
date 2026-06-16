@@ -8,12 +8,13 @@ The deployment creates and configures all necessary cloud resources, including:
 - Networking components
 - Monitoring and supporting infrastructure
 
-During deployment, customers can choose between:
+QRA Cloud can be deployed in one of the following ways:
 
 1. **Deploy a New AKS Cluster (Recommended)**
 2. **Bring Your Own AKS Cluster (BYO AKS)**
+3. **Self-Managed Deployment (Manual Bicep)** — for restricted environments where Azure Managed Application / ARM-based provisioning of certain resources is not permitted
 
-This document explains both options and their requirements.
+This document explains these options and their requirements.
 
 ## Deployment Options (Azure)
 
@@ -167,8 +168,8 @@ helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
     --set global.registry.password='${REGISTRY_PASSWORD}' \
     --set global.database.username='${QRA_DB_USERNAME}' \
     --set global.database.password='${QRA_DB_PASSWORD}' \
-    --set keycloak.adminUser='${KC_ADMIN_USERNAME}' \
-    --set keycloak.adminPassword='${KC_ADMIN_PASSWORD}' \
+    --set global.keycloak.username='${KC_ADMIN_USERNAME}' \
+    --set global.keycloak.password='${KC_ADMIN_PASSWORD}' \
     --set global.tenantName='${TENANT_NAME}' \
     --set global.tenantAdmin='${TENANT_ADMINISTRATORS}' \
     --set infrastructure.telemetry.appInsights.connectionString='${APPINSIGHTS_CONNECTION_STRING}' \
@@ -182,6 +183,156 @@ helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
 ```
 
 > A list of credentials and values will be provided by separately to configure your deployment.
+
+## Option 3 - Self-Managed Deployment (Manual Bicep)
+
+> **Important:** This option is intended for restricted environments where certain resources are not permitted to be provisioned through the Azure Managed Application / ARM-based marketplace deployment. Instead of using the marketplace board, the platform's data services and their private endpoints are provisioned manually with a QRA-provided Bicep template (`mainTemplate.bicep`), and the platform is installed via Helm.
+
+This option builds on the **BYO AKS** model: you provide and operate your own AKS cluster, but you also provision the PaaS networking — private endpoints, DNS, and VNet peering — yourself, rather than relying on the marketplace deployment to create it.
+
+> **DNS note:** This option assumes you manage DNS yourself. The platform's PaaS services are reachable only through their private endpoints, so your DNS solution must resolve each service's FQDN to the private IP address of its private endpoint (see [Step 2](#step-2--configure-dns-resolution-for-the-private-endpoints) and [Step 3](#step-3--verify-dns-resolution)).
+
+### Prerequisites
+
+- An AKS cluster meeting the [BYO AKS Cluster Requirements](#aks-cluster-requirements)
+- Permissions to deploy Bicep templates (e.g. `az deployment group create`) and to create networking resources in the target subscription / resource group
+- The QRA-provided `mainTemplate.bicep` template
+
+### Networking Requirements
+
+In addition to the AKS VNet, you must provision a dedicated virtual network for the platform's PaaS private endpoints.
+
+- One virtual network with an address space of at least `/16`
+- Three `/24` subnets, one per PaaS service:
+
+  | Subnet     | CIDR        | Purpose                      |
+  |------------|-------------|------------------------------|
+  | cosmosdb   | x.x.1.0/24  | Cosmos DB private endpoint   |
+  | sqlserver  | x.x.2.0/24  | SQL Server private endpoint  |
+  | redis      | x.x.3.0/24  | Redis Cache private endpoint |
+
+### Deployment Steps
+
+#### Step 1 — Deploy the data services and private endpoints (Bicep)
+
+Run the QRA-provided `mainTemplate.bicep` template. It provisions the platform's data services — Cosmos DB (MongoDB cluster), SQL Server, and Redis Cache, each with public network access disabled — along with a private endpoint for each service, plus Log Analytics and Application Insights. The three subnet IDs are passed as parameters, so each private endpoint is placed in its corresponding subnet from the table above.
+
+```bash
+az deployment group create \
+    --resource-group <your-resource-group> \
+    --template-file ./mainTemplate.bicep \
+    --parameters \
+        databaseAdminUsername='<db-admin-username>' \
+        databaseAdminPassword='<db-admin-password>' \
+        privateEndpointCosmosDBSubnetId='<cosmosdb-subnet-resource-id>' \
+        privateEndpointSqlServerSubnetId='<sqlserver-subnet-resource-id>' \
+        privateEndpointRedisSubnetId='<redis-subnet-resource-id>'
+```
+
+> Subnet resource IDs follow the format:
+> `/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>`
+>
+> The template outputs the created resource names, private endpoint IDs, and the Application Insights connection string — keep these for the DNS and Helm steps that follow.
+
+#### Step 2 — Configure DNS resolution for the private endpoints
+
+Each PaaS service must be reachable from the AKS cluster by its fully-qualified domain name (FQDN), resolving to the **private IP address of its private endpoint** rather than the public endpoint. Using your own DNS solution, create records so that the following FQDNs resolve to the corresponding private endpoint IPs:
+
+| Service     | FQDN                                          | Resolves to                     |
+|-------------|-----------------------------------------------|---------------------------------|
+| Cosmos DB   | `<cosmos-name>.mongocluster.cosmos.azure.com` | Cosmos DB private endpoint IP   |
+| SQL Server  | `<sqlserver-name>.database.windows.net`       | SQL Server private endpoint IP  |
+| Redis Cache | `<redis-name>.redis.cache.windows.net`        | Redis Cache private endpoint IP |
+
+The service names are emitted as outputs by the Bicep template in Step 1. Each private endpoint's private IP can be read from its network interface (created in Step 1). Ensure the AKS nodes and pods use this DNS solution for name resolution.
+
+#### Step 3 — Verify DNS resolution
+
+From a host that uses your DNS solution — ideally from within the AKS cluster or another host on the AKS VNet — confirm that each PaaS FQDN resolves to its private endpoint's private IP address, not a public address:
+
+```bash
+nslookup <cosmos-name>.mongocluster.cosmos.azure.com
+nslookup <sqlserver-name>.database.windows.net
+nslookup <redis-name>.redis.cache.windows.net
+```
+
+Each lookup must return the private IP of the corresponding private endpoint.
+
+#### Step 4 — Peer the AKS VNet to the PaaS VNet
+
+Create a VNet peering between the AKS virtual network and the PaaS virtual network so that AKS workloads can reach the private endpoints. Peering must be created in both directions.
+
+![VNet peering 1](./assets/vnet-peering-1.png)
+![VNet peering 2](./assets/vnet-peering-2.png)
+
+#### Step 5 — Install the QRA Cloud helm chart
+
+Once the private endpoints, DNS records, and VNet peering are in place, install the platform with Helm. Because this option manages DNS and TLS certificates externally, the chart is installed in **Basic Installation** mode: cert-manager is disabled, you supply your own TLS certificate, and you point your own DNS at the ingress controller.
+
+**1. Install the ingress controller and KEDA.** These components must be installed before the chart. The ingress controller provisions the load balancer whose IP you point DNS at in the next step:
+
+```bash
+# Add Helm repositories
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+# Install KEDA
+helm install keda kedacore/keda --namespace keda --create-namespace
+
+# Install the ingress controller
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+    --namespace ingress-nginx --create-namespace \
+    --set controller.service.type=LoadBalancer
+```
+
+**2. Register the application DNS records.** In your DNS provider, create A records that point each ingress hostname to the ingress controller's IP:
+
+```
+portal.<your-domain>   ->  <ingress-ip>
+api.<your-domain>      ->  <ingress-ip>
+auth.<your-domain>     ->  <ingress-ip>
+```
+
+**2. Create the TLS secret** from your own certificate in the `qra` namespace. The certificate must cover all three hostnames (use a SAN or wildcard certificate):
+
+```bash
+kubectl create secret tls qracloud-tls \
+    --cert=path/to/tls.crt \
+    --key=path/to/tls.key \
+    --namespace qra
+```
+
+**3. Install the chart** with cert-manager disabled and your certificate and hostnames supplied:
+
+```bash
+helm upgrade qracloud oci://$REGISTRY_NAME/helm/qracloud/platform/qra \
+    --install \
+    --namespace qra --create-namespace \
+    --set certManager.enabled=false \
+    --set ingress.tls.existingSecret='qracloud-tls' \
+    --set ingress.portal.host='portal.<your-domain>' \
+    --set ingress.gateway.host='api.<your-domain>' \
+    --set ingress.keycloak.host='auth.<your-domain>' \
+    --set global.registry.name='${REGISTRY_NAME}' \
+    --set global.registry.username='${REGISTRY_USERNAME}' \
+    --set global.registry.password='${REGISTRY_PASSWORD}' \
+    --set global.database.username='${QRA_DB_USERNAME}' \
+    --set global.database.password='${QRA_DB_PASSWORD}' \
+    --set global.keycloak.username='${KC_ADMIN_USERNAME}' \
+    --set global.keycloak.password='${KC_ADMIN_PASSWORD}' \
+    --set global.tenantName='${TENANT_NAME}' \
+    --set global.tenantAdmin='${TENANT_ADMINISTRATORS}' \
+    --set infrastructure.telemetry.appInsights.connectionString='${APPINSIGHTS_CONNECTION_STRING}' \
+    --set global.database.connectionString='${QRA_DB_CONNECTIONSTRING}' \
+    --set global.keycloak.connectionString='${QRA_KC_DB_CONNECTIONSTRING}' \
+    --set global.redis.connectionString='${QRA_REDIS_CONNECTIONSTRING}' \
+    --set global.nodePool='qra' \
+    --set global.qwl.replicas=$QWL_REPLICAS \
+    --wait
+```
+
+Because `certManager.enabled=false`, the chart skips the `ClusterIssuer`, the Azure DNS credentials secret, and the `cert-manager.io/cluster-issuer` ingress annotation — so `global.azureDNS.clientSecret` is not required.
 
 ## Recommendation
 
